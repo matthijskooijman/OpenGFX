@@ -28,11 +28,15 @@ include Makefile.config
 
 # Directory structure
 SCRIPT_DIR          ?= scripts
+# If this is . then pre-built png files from the git repo will be used
+# (or updated). If set to another dirname, png files will always be
+# generated from scratch.
+BUILD_DIR           ?= .
 
 # Define the filenames of the grf and nml file. They must be in the main directoy
-GRF_FILES            ?= $(addsuffix .grf,$(BASE_FILENAME))
-NML_FILES            ?= $(addsuffix .nml,$(BASE_FILENAME))
-DEP_FILES            ?= $(addsuffix .grf.dep,$(BASE_FILENAME)) $(addsuffix .nml.dep,$(BASE_FILENAME))
+GRF_FILES            ?= $(addprefix $(BUILD_DIR)/,$(addsuffix .grf,$(BASE_FILENAME)))
+NML_FILES            ?= $(addprefix $(BUILD_DIR)/,$(addsuffix .nml,$(BASE_FILENAME)))
+DEP_FILES            ?= $(addprefix $(BUILD_DIR)/,$(addsuffix .grf.dep,$(BASE_FILENAME)) $(addsuffix .nml.dep,$(BASE_FILENAME)))
 PNML_FILES           ?= $(addsuffix .pnml,$(BASE_FILENAME))
 DOC_FILES            ?= $(LICENSE_FILE) $(CHANGELOG_FILE) $(README_FILE)
 LNG_FILES            ?= lang/*.lng
@@ -40,7 +44,7 @@ GFX_FILES            ?=
 
 # List of all files which will get shipped, minus documentation files.
 # Documentation files often are generated from other files.
-BUNDLE_FILES           ?= $(GRF_FILES) $(OBG_FILENAME)
+BUNDLE_FILES           ?= $(GRF_FILES) $(BUILD_DIR)/$(OBG_FILENAME)
 BANANAS_INI            ?= bananas.ini
 
 # Replacement strings in the source and in the documentation
@@ -179,8 +183,9 @@ REPO_TITLE     := $(REPO_NAME) $(REPO_VERSION)
 
 # Have a file which, if modified, triggers recompiling targets that use these
 # variables.
-Makefile.vcs: FORCE
+$(BUILD_DIR)/Makefile.vcs: FORCE
 	$(_E) "[VCS] $@"
+	$(_V) mkdir -p "$(BUILD_DIR)"
 	$(_V) echo "REPO_HASH            = $(REPO_HASH)" >> $@.new
 	$(_V) echo "REPO_DATE            = $(REPO_DATE)" >> $@.new
 	$(_V) echo "REPO_VERSION         = $(REPO_VERSION)" >> $@.new
@@ -198,7 +203,7 @@ clean::
 
 clean::
 	$(_E) "[CLEAN VCS]"
-	$(_V)-rm -f Makefile.vcs
+	$(_V)-rm -f $(BUILD_DIR)/Makefile.vcs
 
 ################################################################
 #
@@ -210,7 +215,8 @@ clean::
 
 nml: $(NML_FILES)
 
-%.nml: %.pnml Makefile.vcs
+$(BUILD_DIR)/%.nml: %.pnml $(BUILD_DIR)/Makefile.vcs
+	$(_V) mkdir -p "$(BUILD_DIR)"
 	$(_E) "[CPP] $@"
 	$(_V) $(CC) -D NEWGRF_VERSION=$(NEWGRF_VERSION) $(CC_USER_FLAGS) $(CC_FLAGS) -MMD -MF $@.dep -MT $@ -o $@ $<
 
@@ -239,21 +245,24 @@ ifdef GFX_SCRIPT_LIST_FILES
 ifneq ($(GIMP),)
 
 # Always include to force creation, if not existing
-include Makefile.gfx
+include $(BUILD_DIR)/Makefile.gfx
 
-gfx: Makefile.gfx
+gfx: $(BUILD_DIR)/Makefile.gfx
 
 # Generation of processing rules for png files.
 # The rules are only updated, if there are any changes to them. (This is also the case for the .scm files)
 #
 # Make "Makefile.gfx $(GFX_FILES)" an ordering "|"-prerequisite of any target that may depend on generated png files.
 #
-Makefile.gfx: $(GFX_SCRIPT_LIST_FILES) Makefile Makefile.config
+$(BUILD_DIR)/Makefile.gfx: $(GFX_SCRIPT_LIST_FILES) Makefile Makefile.config
 	$(_E) "[GFX-DEP] $@"
+	$(_V) mkdir -p "$(BUILD_DIR)"
 	$(_V) echo "" > $@
 	$(_V)\
 		for j in $(GFX_SCRIPT_LIST_FILES); do\
 			cat $$j | grep -v '^\(#\|$$\)' | while read -r png xcf layers; do\
+				png=$(BUILD_DIR)/$$png;\
+				mkdir -p $$(dirname $$png);\
 				echo "$$png.scm: $$j" >> $@;\
 				echo "$$png: $$xcf" >> $@;\
 				echo "GFX_FILES += $$png" >> $@;\
@@ -271,20 +280,21 @@ Makefile.gfx: $(GFX_SCRIPT_LIST_FILES) Makefile Makefile.config
 	$(_E) "[GIMP] $@"
 	$(_V) $(GIMP) $(GIMP_FLAGS) -b - <$< >/dev/null
 
+
 clean::
 	$(_E) "[CLEAN GFX]"
-	$(_V) for i in $$(cat $(GFX_SCRIPT_LIST_FILES) | grep -v '^\(#\|$$\)' | cut -d\  -f1); do rm -rf $$i.scm; done;
-	$(_V) rm -rf Makefile.gfx
+	$(_V) for i in $$(cat $(GFX_SCRIPT_LIST_FILES) | grep -v '^\(#\|$$\)' | cut -d\  -f1); do rm -rf $(BUILD_DIR)/$$i.scm; done;
+	$(_V) rm -rf $(BUILD_DIR)/Makefile.gfx
 
 clean-gfx::
 	$(_E) "[CLEAN-GFX]"
-	$(_V) for i in $$(cat $(GFX_SCRIPT_LIST_FILES) | grep -v '^\(#\|$$\)' | cut -d\  -f1); do rm -rf $$i; done;
+	$(_V) for i in $$(cat $(GFX_SCRIPT_LIST_FILES) | grep -v '^\(#\|$$\)' | cut -d\  -f1); do rm -rf $(BUILD_DIR)/$$i; done;
 
 else
 
-gfx: Makefile.gfx
+gfx: $(BUILD_DIR)/Makefile.gfx
 
-Makefile.gfx: FORCE
+$(BUILD_DIR)/Makefile.gfx: FORCE
 	$(_E) "[GIMP disabled]"
 
 endif
@@ -302,8 +312,9 @@ endif
 grf: $(GFX_FILES) $(GRF_FILES)
 
 # custom_tags.txt is used by NML to replace variables in LNG_FILES
-custom_tags.txt: Makefile.vcs
+$(BUILD_DIR)/custom_tags.txt: $(BUILD_DIR)/Makefile.vcs
 	$(_E) "[NML-LNG] $@"
+	$(_V) mkdir -p "$(BUILD_DIR)"
 	$(_V) echo "VERSION        :$(REPO_VERSION)" > $@
 	$(_V) echo "VERSION_STRING :$(REPO_VERSION)" >> $@
 	$(_V) echo "TITLE          :$(REPO_TITLE)" >> $@
@@ -313,7 +324,7 @@ custom_tags.txt: Makefile.vcs
 	$(_V) echo "NEWGRF_VERSION :$(NEWGRF_VERSION)" >> $@
 	$(_V) echo "DAYS_SINCE_2K  :$(REPO_DAYS_SINCE_2000)" >> $@
 
-%.grf: %.nml $(LNG_FILES) custom_tags.txt | Makefile.gfx $(GFX_FILES)
+%.grf: %.nml $(LNG_FILES) $(BUILD_DIR)/custom_tags.txt | $(BUILD_DIR)/Makefile.gfx $(GFX_FILES)
 	$(_E) "[NML] $@"
 ifeq ($(NML),)
 	$(_E) "No NML compiler found!"
@@ -331,7 +342,7 @@ ifeq ($(shell [ "$(NML_REVISION)" -lt "$(MIN_NML_REVISION)" ] && echo "true" || 
 	$(_V) false
 endif
 endif
-	$(_V) $(NML) $(NML_FLAGS) -M --MF=$@.dep --grf $@ $<
+	$(_V) $(NML) $(NML_FLAGS) -M --MF=$@.dep --custom-tags=$(BUILD_DIR)/custom_tags.txt --grf $@ $<
 
 clean::
 	$(_E) "[CLEAN GRF]"
@@ -339,7 +350,7 @@ clean::
 	$(_V)-rm -rf $(GRF_FILES).cache
 	$(_V)-rm -rf $(GRF_FILES).cacheindex
 	$(_V)-rm -rf .nmlcache
-	$(_V)-rm -rf custom_tags.txt
+	$(_V)-rm -rf $(BUILD_DIR)/custom_tags.txt
 
 maintainer-clean::
 	$(_E) "[MAINTAINER-CLEAN GRF]"
@@ -356,9 +367,9 @@ maintainer-clean::
 
 ifdef OBG_FILENAME
 
-obg: $(OBG_FILENAME)
+obg: $(BUILD_DIR)/$(OBG_FILENAME)
 
-%.obg: $(GFX_FILES) $(GRF_FILES) $(LNG_FILES) Makefile.vcs
+%.obg: $(GFX_FILES) $(GRF_FILES) $(LNG_FILES) $(BUILD_DIR)/Makefile.vcs
 ifeq ($(GRFID),)
 	$(_E) "Cannot create obg files without grfid. Please install grfcodec, and try again. Aborting."
 	$(_V) false
@@ -387,7 +398,7 @@ endif
 
 clean::
 	$(_E) "[CLEAN OBG]"
-	$(_V) -rm -f $(OBG_FILENAME)
+	$(_V) -rm -f $(BUILD_DIR)/$(OBG_FILENAME)
 
 endif
 
@@ -645,7 +656,7 @@ ifeq ($(INSTALL_DIR),"")
 endif
 	$(_E) "[INSTALL] to $(INSTALL_DIR)"
 	$(_V) install -d $(INSTALL_DIR)
-	$(_V) install -m644 $(GRF_FILES) $(OBG_FILENAME) $(INSTALL_DIR)
+	$(_V) install -m644 $(GRF_FILES) $(BUILD_DIR)/$(OBG_FILENAME) $(INSTALL_DIR)
 # OpenTTD is very picky about how these next few files are are named, so make
 # sure they have the correct name after installation
 ifndef DO_NOT_INSTALL_LICENSE

@@ -228,7 +228,7 @@ clean::
 #
 # - $(GFX_SCRIPT_LIST_FILES) specifies a list of source xcf2png files.
 # - From this file a list of rules to generate png files are created *before* processing any real targets.
-# - NML generares png prerequisited for all image files.
+# - NML generates png prerequisited for all image files.
 # - The generated png files ($(GFX_FILES)) are additionally order-prerequisites to all grf files,
 #   in case no NML dependencies were generated yet.
 #

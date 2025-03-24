@@ -253,31 +253,32 @@ Makefile.gfx: $(GFX_SCRIPT_LIST_FILES) Makefile Makefile.config
 	$(_V) echo "" > $@
 	$(_V)\
 		for j in $(GFX_SCRIPT_LIST_FILES); do\
-			for i in `cat $$j | grep "\([pP][cCnN][xXgG]\)" | grep -v "^#" | cut -d\  -f1 | sed "s/\.\([pP][cCnN][xXgG]\)//"`; do\
-				echo "$$i.scm: $$j" >> $@;\
-				echo "GFX_FILES += $$i.png" >> $@;\
-				cat $(GIMP_SCRIPT) > $$i.scm.new;\
-				grep $$i.png $$j | sed -f $(SCRIPT_DIR)/gimp.sed >> $$i.scm.new;\
-				echo "(gimp-quit 0)" >> $$i.scm.new;\
-				cmp -s $$i.scm.new $$i.scm || cp $$i.scm.new $$i.scm;\
-				rm -f $$i.scm.new;\
+			cat $$j | grep -v '^\(#\|$$\)' | while read -r png xcf layers; do\
+				echo "$$png.scm: $$j" >> $@;\
+				echo "$$png: $$xcf" >> $@;\
+				echo "GFX_FILES += $$png" >> $@;\
+				cat $(GIMP_SCRIPT) > $$png.scm.new;\
+				quoted_layers=$$(echo $$layers | sed 's/ \+/" "/g');\
+				echo "(save-layers \"$$xcf\" \"$$png\" '(\"$$quoted_layers\"))" >> $$png.scm.new;\
+				echo "(gimp-quit 0)" >> $$png.scm.new;\
+				cmp -s $$png.scm.new $$png.scm || cp $$png.scm.new $$png.scm;\
+				rm -f $$png.scm.new;\
 			done;\
 		done
-	$(_V) cat $(GFX_SCRIPT_LIST_FILES) | grep "\([pP][cCnN][xXgG]\)" | grep -v "^#" | sed "s/[ ] */ /g" | cut -d\  -f1-2 | sed "s/ /: /g" >> $@
 
 # create the png file. And make sure it's re-created even when present in the repo
-%.png: %.scm
+%.png: %.png.scm
 	$(_E) "[GIMP] $@"
 	$(_V) $(GIMP) $(GIMP_FLAGS) -b - <$< >/dev/null
 
 clean::
 	$(_E) "[CLEAN GFX]"
-	$(_V) for j in $(GFX_SCRIPT_LIST_FILES); do for i in `cat $$j | grep "\([pP][cCnN][xXgG]\)" | cut -d\  -f1 | sed "s/\.\([pP][cCnN][xXgG]\)//"`; do rm -rf $$i.scm; done; done
+	$(_V) for i in $$(cat $(GFX_SCRIPT_LIST_FILES) | grep -v '^\(#\|$$\)' | cut -d\  -f1); do rm -rf $$i.scm; done;
 	$(_V) rm -rf Makefile.gfx
 
 clean-gfx::
 	$(_E) "[CLEAN-GFX]"
-	$(_V) for j in $(GFX_SCRIPT_LIST_FILES); do for i in `cat $$j | grep "\([pP][cCnN][xXgG]\)" | cut -d\  -f1 | sed "s/\.\([pP][cCnN][xXgG]\)//"`; do rm -rf $$i.png; done; done
+	$(_V) for i in $$(cat $(GFX_SCRIPT_LIST_FILES) | grep -v '^\(#\|$$\)' | cut -d\  -f1); do rm -rf $$i; done;
 
 else
 
